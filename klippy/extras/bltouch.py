@@ -55,7 +55,7 @@ class BLTouchEndstopWrapper:
     def home_finalize(self):
         toolhead = self.printer.lookup_object('toolhead')
         print_time = toolhead.get_last_move_time()
-        self.send_cmd(print_time, CMD_PIN_UP)
+        self.send_cmd(print_time, CMD_RESET)
         toolhead.dwell(DELAY_TIME)
         self.mcu_endstop.home_finalize()
     def get_position_endstop(self):
