@@ -3,10 +3,13 @@
 # Copyright (C) 2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import probe
+import homing, probe
 
 SIGNAL_PERIOD = 0.025600
 DELAY_TIME = 0.100
+TEST_TIME = 5 * 60.
+ENDSTOP_SAMPLE_TIME = .000015
+ENDSTOP_SAMPLE_COUNT = 4
 
 CMD_PIN_DOWN = 0.000700
 CMD_PIN_UP = 0.001500
@@ -18,6 +21,7 @@ CMD_TOUCH_MODE = 0.001200
 class BLTouchEndstopWrapper:
     def __init__(self, config):
         self.printer = config.get_printer()
+        self.next_test_time = 0.
         self.position_endstop = config.getfloat('z_offset')
         # Create a pwm object to handle the control pin
         ppins = self.printer.lookup_object('pins')
@@ -45,7 +49,25 @@ class BLTouchEndstopWrapper:
             stepper.add_to_endstop(self)
     def send_cmd(self, print_time, cmd):
         self.mcu_pwm.set_pwm(print_time, cmd / SIGNAL_PERIOD)
+    def test_sensor(self):
+        toolhead = self.printer.lookup_object('toolhead')
+        print_time = toolhead.get_last_move_time()
+        if print_time < self.next_test_time:
+            self.next_test_time = print_time + TEST_TIME
+            return
+        self.send_cmd(print_time, CMD_RESET)
+        self.send_cmd(print_time + DELAY_TIME, CMD_TOUCH_MODE)
+        self.mcu_endstop.home_start(print_time + DELAY_TIME,
+                                    ENDSTOP_SAMPLE_TIME, ENDSTOP_SAMPLE_COUNT,
+                                    .001)
+        try:
+            self.mcu_endstop.home_wait(print_time + 2. * DELAY_TIME)
+        except self.mcu_endstop.TimeoutError as e:
+            raise homing.EndstopError("BLTouch sensor test failed")
+        self.next_test_time = print_time + TEST_TIME
+        toolhead.reset_print_time(print_time + 2. * DELAY_TIME)
     def home_prepare(self):
+        self.test_sensor()
         toolhead = self.printer.lookup_object('toolhead')
         print_time = toolhead.get_last_move_time()
         self.send_cmd(print_time, CMD_PIN_DOWN)
