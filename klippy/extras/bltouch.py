@@ -62,4 +62,6 @@ class BLTouchEndstopWrapper:
         return self.position_endstop
 
 def load_config(config):
-    return probe.PrinterProbe(config, BLTouchEndstopWrapper(config))
+    blt = probe.PrinterProbe(config, BLTouchEndstopWrapper(config))
+    config.get_printer().add_object('probe', blt)
+    return None
