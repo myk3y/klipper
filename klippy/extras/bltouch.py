@@ -6,7 +6,9 @@
 import homing, probe
 
 SIGNAL_PERIOD = 0.025600
-DELAY_TIME = 0.200
+PIN_MOVE_TIME = 8 * SIGNAL_PERIOD
+MIN_CMD_TIME = 4 * SIGNAL_PERIOD
+
 TEST_TIME = 5 * 60.
 ENDSTOP_SAMPLE_TIME = .000015
 ENDSTOP_SAMPLE_COUNT = 4
@@ -56,29 +58,31 @@ class BLTouchEndstopWrapper:
             self.next_test_time = print_time + TEST_TIME
             return
         self.send_cmd(print_time, CMD_RESET)
-        self.send_cmd(print_time + DELAY_TIME, CMD_TOUCH_MODE)
-        self.mcu_endstop.home_start(print_time + DELAY_TIME,
-                                    ENDSTOP_SAMPLE_TIME, ENDSTOP_SAMPLE_COUNT,
-                                    .001)
+        home_time = print_time + PIN_MOVE_TIME
+        self.send_cmd(home_time, CMD_TOUCH_MODE)
+        self.send_cmd(home_time + MIN_CMD_TIME, 0.)
+        self.mcu_endstop.home_start(
+            home_time, ENDSTOP_SAMPLE_TIME, ENDSTOP_SAMPLE_COUNT, .001)
         try:
-            self.mcu_endstop.home_wait(print_time + 2. * DELAY_TIME)
+            self.mcu_endstop.home_wait(home_time + MIN_CMD_TIME)
         except self.mcu_endstop.TimeoutError as e:
             raise homing.EndstopError("BLTouch sensor test failed")
-        self.next_test_time = print_time + TEST_TIME
-        toolhead.reset_print_time(print_time + 2. * DELAY_TIME)
+        self.next_test_time = home_time + TEST_TIME
+        toolhead.reset_print_time(home_time + 2. * MIN_CMD_TIME)
     def home_prepare(self):
         self.test_sensor()
         toolhead = self.printer.lookup_object('toolhead')
         print_time = toolhead.get_last_move_time()
         self.send_cmd(print_time, CMD_PIN_DOWN)
-        self.send_cmd(print_time + DELAY_TIME, CMD_TOUCH_MODE)
-        toolhead.dwell(DELAY_TIME * 2.)
+        self.send_cmd(print_time + PIN_MOVE_TIME, CMD_TOUCH_MODE)
+        toolhead.dwell(PIN_MOVE_TIME + MIN_CMD_TIME)
         self.mcu_endstop.home_prepare()
     def home_finalize(self):
         toolhead = self.printer.lookup_object('toolhead')
         print_time = toolhead.get_last_move_time()
         self.send_cmd(print_time, CMD_RESET)
-        toolhead.dwell(DELAY_TIME)
+        self.send_cmd(print_time + PIN_MOVE_TIME, 0.)
+        toolhead.dwell(PIN_MOVE_TIME + MIN_CMD_TIME)
         self.mcu_endstop.home_finalize()
     def get_position_endstop(self):
         return self.position_endstop
